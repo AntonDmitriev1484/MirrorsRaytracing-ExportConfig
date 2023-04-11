@@ -2,8 +2,25 @@ import os
 import json
 import re
 import sys
-#import numpy # <- can't install numpy because pip isn't working, they suggest I reinstall Python :(
-#import serial
+
+# PROTOCOL
+
+# Format:  'move row col motor direction steps'
+# output that line by line into a text file
+
+# row starts from 0 -> row.size() -1
+# col starts from 0 -> # mirrors per row
+
+# motor 1 rotates up / down, motor 0 rotates left /right rotation about z
+# direction 0 is -, 1 is +. so 0 is (left and down), so 1 is (right and up)
+# delta position is steps / Prof. Chamberlain sent over the conversion rate.
+
+# Update a text file: "CatotpricInput.txt"
+
+
+# After I write, invoke './CatoptricController -Test'
+# -Test will just be a flag that automatically goes and reads everything from my text file
+
 
 # Constants
 
@@ -13,7 +30,6 @@ path = ""
 file = open("../ConfigExportOutput/"+pair_system_name+"Config.txt","r")
 
 #arduino = serial.Serial('/dev/serial/by-id/usb-Arduino__www.arduino.cc__0043_75435353934351E01131-if00', baudrate=9600)
-# DO I NEED TO CHANGE THIS FOR MY OWN COMPUTER???? ^^^^^^^^
 
 # Export Config File Info:
 # (x,y) : Pitch=... Yaw=... Roll=...
@@ -21,18 +37,9 @@ file = open("../ConfigExportOutput/"+pair_system_name+"Config.txt","r")
 # Pitch in rotator is rotation along +- x
 # Roll in rotator is rotation along +- y
 
-# Arduino Protocol Info:
-# Start = 0x21 (!), End = 0x23 (#)
-# Key (for motor movement) = 0x41 (A)
-# Ack = 0x61 (a), Nack = 0x62 (b)
-
-# Note: NOT WRITING DIRECTLY TO ARDUINO
 # Packet format: start, key, x, y, motor, direction, steps
 #       direction is 0 backwards, 1 forwards
 #       motor documentation gives 11.25 deg/ 16.128 steps ratio
-
-# Ack format: start, ack, key, x, y, motor, end
-# Nack format: start, nack, <message> (variable length), end
 
 def LineToArduinoCommands(line):
     print(LineToJSON(line))
@@ -64,13 +71,27 @@ def LineToArduinoCommands(line):
 
     return (hpacket, vpacket)
 
-def SendLineToArduino(line):
-    commands = LineToArduinoCommands(line)
-    # Send out the command here
-    # arduino.write(commands[0])
-    # arduino.write(commands[1])
-    # Control flow to deal with ack / nack
-    return commands
+def LineToCatoptricControllerCommands(line):
+    print(LineToArduinoCommands(line))
+
+    match_obj = re.match(regex, line)
+
+    x = int(match_obj[1])
+    y = int(match_obj[2])
+
+    v_direction = (0, 1) [(float(match_obj[3]) < 0)] # scuffed ternary operator by indexing
+    h_direction = (0, 1) [(float(match_obj[5]) < 0)]
+
+    # Still need to add 'step' field
+    # Also I think I need to re-do how I do my rotation translation again :(
+
+    # move row col motor direction steps
+    ud_motor_command = 'move {y} {x} 1 {y_direction}'
+    lr_motor_command = 'move {y} {x} 0 {h_direction}'
+
+
+    return (lr_motor_command, ud_motor_command)
+
 
 def LineToJSON(line):
     match_obj = re.match(regex, line)
@@ -83,8 +104,6 @@ def LineToJSON(line):
     line_to_json = json.dumps(line_to_py_obj)
     return line_to_json
 
-
-
 def MapFileLines(file, mapper):
     arr = []
     for line in file:
@@ -92,14 +111,15 @@ def MapFileLines(file, mapper):
     return arr
 
 
-# json_objects = MapFileLines(file, LineToJSON)
-# print(json_objects)
 
-# file.seek(0) # Reset file pointer to top
+controller_commands = MapFileLines(file, LineToCatoptricControllerCommands)
+print(controller_commands)
 
-arduino_commands = MapFileLines(file, LineToArduinoCommands)
-print(arduino_commands)
 
+new_file = open("CatoptricInput.txt", "a")
+for command in controller_commands:
+    new_file.write(command)
+new_file.close()
 
 
 
